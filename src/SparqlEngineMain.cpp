@@ -163,4 +163,8 @@ void processQuery(QueryExecutionContext& qec, const string &query) {
   qet.writeResultToStream(cout, pq._selectedVariables, limit, offset);
   t.stop();
   std::cout << "\nDone. Time: " << t.usecs() / 1000.0 << " ms\n";
+  std::cout << "\nNumber of matches (no limit): " << qet.getResult().size() <<
+  "\n";
+  std::cout << "\nNumber of matches (limit): " <<
+  std::min(qet.getResult().size(), size_t(atoi(pq._limit.c_str()))) << "\n";
 }
