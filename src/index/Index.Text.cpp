@@ -31,7 +31,7 @@ void Index::buildDocsDB(const string& docsFileName) {
   ad_utility::File docsFile(docsFileName.c_str(), "r");
   ad_utility::File out(string(_onDiskBase + ".text.docsDB").c_str(), "w");
   off_t currentOffset = 0;
-  char *buf = new char[BUFFER_SIZE_DOCSFILE_LINE];
+  char* buf = new char[BUFFER_SIZE_DOCSFILE_LINE];
   string line;
   while (docsFile.readLine(&line, buf, BUFFER_SIZE_DOCSFILE_LINE)) {
     out.writeLine(line);
@@ -57,7 +57,7 @@ void Index::addTextFromOnDiskIndex() {
   AD_CHECK(_textIndexFile.isOpen());
   off_t metaFrom;
   off_t metaTo = _textIndexFile.getLastOffset(&metaFrom);
-  unsigned char *buf = new unsigned char[metaTo - metaFrom];
+  unsigned char* buf = new unsigned char[metaTo - metaFrom];
   _textIndexFile.read(buf, static_cast<size_t>(metaTo - metaFrom), metaFrom);
   _textMeta.createFromByteBuffer(buf);
   delete[] buf;
@@ -271,9 +271,9 @@ ContextListMetaData Index::writePostings(ad_utility::File& out,
 
   // Collect the individual lists
   // Context lists are gap encoded, word and score lists frequency encoded.
-  Id *contextList = new Id[meta._nofElements];
-  Id *wordList = new Id[meta._nofElements];
-  Score *scoreList = new Score[meta._nofElements];
+  Id* contextList = new Id[meta._nofElements];
+  Id* wordList = new Id[meta._nofElements];
+  Score* scoreList = new Score[meta._nofElements];
 
   size_t n = 0;
 
@@ -374,10 +374,10 @@ Id Index::getEntityBlockId(Id entityId) const {
 
 // _____________________________________________________________________________
 template<typename Numeric>
-size_t Index::writeList(Numeric *data, size_t nofElements,
+size_t Index::writeList(Numeric* data, size_t nofElements,
                         ad_utility::File& file) const {
   if (nofElements > 0) {
-    uint64_t *encoded = new uint64_t[nofElements];
+    uint64_t* encoded = new uint64_t[nofElements];
     size_t size = ad_utility::Simple8bCode::encode(data, nofElements,
                                                    encoded);
     size_t ret = file.write(encoded, size);
@@ -464,7 +464,7 @@ const string& Index::wordIdToString(Id id) const {
 
 // _____________________________________________________________________________
 void Index::getContextListForWords(const string& words,
-                                   Index::WidthTwoList *result) const {
+                                   Index::WidthTwoList* result) const {
   LOG(DEBUG) << "In getContextListForWords...\n";
   auto terms = ad_utility::split(words, ' ');
   AD_CHECK(terms.size() > 0);
@@ -505,22 +505,30 @@ void Index::getContextListForWords(const string& words,
 // _____________________________________________________________________________
 void Index::getWordPostingsForTerm(const string& term, vector<Id>& cids,
                                    vector<Score>& scores) const {
+  assert(term.size() > 0);
   LOG(DEBUG) << "Getting word postings for term: " << term << '\n';
   IdRange idRange;
+  bool entityTerm = (term[0] == '<' && term.back() == '>');
   if (term[term.size() - 1] == PREFIX_CHAR) {
     if (!_textVocab.getIdRangeForFullTextPrefix(term, &idRange)) {
       LOG(INFO) << "Prefix: " << term << " not in vocabulary\n";
       return;
     }
   } else {
-    if (!_textVocab.getId(term, &idRange._first)) {
+    if (entityTerm) {
+      if (!_vocab.getId(term, &idRange._first)) {
+        LOG(INFO) << "Term: " << term << " not in entity vocabulary\n";
+        return;
+      }
+    } else if (!_textVocab.getId(term, &idRange._first)) {
       LOG(INFO) << "Term: " << term << " not in vocabulary\n";
       return;
     }
     idRange._last = idRange._first;
   }
-  const auto& tbmd = _textMeta.getBlockInfoByWordRange(idRange._first,
-                                                       idRange._last);
+  const auto& tbmd = entityTerm ? _textMeta.getBlockInfoByEntityId(
+      idRange._first) : _textMeta.getBlockInfoByWordRange(idRange._first,
+                                                          idRange._last);
   if (tbmd._cl.hasMultipleWords() && !(tbmd._firstWordId == idRange._first &&
                                        tbmd._lastWordId == idRange._last)) {
     vector<Id> blockCids;
@@ -576,6 +584,8 @@ void Index::getContextEntityScoreListsForWords(const string& words,
     // Take all other words and get word posting lists for them.
     // Intersect all and keep the entity word ids.
     size_t useElFromTerm = getIndexOfBestSuitedElTerm(terms);
+    LOG(TRACE) << "Best term to take entity list from: " <<
+               terms[useElFromTerm] << std::endl;
 
     if (terms.size() == 2) {
       // Special case of two terms: no k-way intersect needed.
@@ -680,21 +690,29 @@ void Index::getECListForWords(const string& words, size_t limit,
 void Index::getEntityPostingsForTerm(const string& term, vector<Id>& cids,
                                      vector<Id>& eids,
                                      vector<Score>& scores) const {
+  LOG(DEBUG) << "Getting entity postings for term: " << term << '\n';
   IdRange idRange;
-  if (term[term.size() - 1] == PREFIX_CHAR) {
+  bool entityTerm = (term[0] == '<' && term.back() == '>');
+  if (term.back() == PREFIX_CHAR) {
     LOG(INFO) << "Prefix: " << term << " not in vocabulary\n";
     if (!_textVocab.getIdRangeForFullTextPrefix(term, &idRange)) {
       return;
     }
   } else {
-    if (!_textVocab.getId(term, &idRange._first)) {
-      LOG(INFO) << "Term: " << term << " not in vocabulary\n";
+    if (entityTerm) {
+      if (!_vocab.getId(term, &idRange._first)) {
+        LOG(DEBUG) << "Term: " << term << " not in entity vocabulary\n";
+        return;
+      }
+    } else if (!_textVocab.getId(term, &idRange._first)) {
+      LOG(DEBUG) << "Term: " << term << " not in vocabulary\n";
       return;
     }
     idRange._last = idRange._first;
   }
-  const auto& tbmd = _textMeta.getBlockInfoByWordRange(idRange._first,
-                                                       idRange._last);
+  const auto& tbmd = entityTerm ? _textMeta.getBlockInfoByEntityId(
+      idRange._first) : _textMeta.getBlockInfoByWordRange(idRange._first,
+                                                          idRange._last);
 
   if (!tbmd._cl.hasMultipleWords() || (tbmd._firstWordId == idRange._first &&
                                        tbmd._lastWordId == idRange._last)) {
@@ -758,7 +776,7 @@ void Index::readGapComprList(size_t nofElements, off_t from, size_t nofBytes,
   LOG(TRACE) << "NofElements: " << nofElements << ", from: " << from <<
              ", nofBytes: " << nofBytes << '\n';
   result.resize(nofElements + 250);
-  uint64_t *encoded = new uint64_t[nofBytes / 8];
+  uint64_t* encoded = new uint64_t[nofBytes / 8];
   _textIndexFile.read(encoded, nofBytes, from);
   LOG(DEBUG) << "Decoding Simple8b code...\n";
   ad_utility::Simple8bCode::decode(encoded, nofElements, result.data());
@@ -783,14 +801,14 @@ void Index::readFreqComprList(size_t nofElements, off_t from, size_t nofBytes,
   LOG(TRACE) << "NofElements: " << nofElements << ", from: " << from <<
              ", nofBytes: " << nofBytes << '\n';
   size_t nofCodebookBytes;
-  uint64_t *encoded = new uint64_t[nofElements];
+  uint64_t* encoded = new uint64_t[nofElements];
   result.resize(nofElements + 250);
   off_t current = from;
   size_t ret = _textIndexFile.read(&nofCodebookBytes, sizeof(off_t), current);
   LOG(TRACE) << "Nof Codebook Bytes: " << nofCodebookBytes << '\n';
   AD_CHECK_EQ(sizeof(off_t), ret);
   current += ret;
-  T *codebook = new T[nofCodebookBytes / sizeof(T)];
+  T* codebook = new T[nofCodebookBytes / sizeof(T)];
   ret = _textIndexFile.read(codebook, nofCodebookBytes);
   current += ret;
   AD_CHECK_EQ(ret, size_t(nofCodebookBytes));
@@ -842,7 +860,7 @@ void Index::dumpAsciiLists() const {
                                           tbmd._cl._startContextlist);
 
       ids.resize(nofElements + 250);
-      uint64_t *encodedD = new uint64_t[nofBytes / 8];
+      uint64_t* encodedD = new uint64_t[nofBytes / 8];
       _textIndexFile.read(encodedD, nofBytes, from);
       LOG(DEBUG) << "Decoding Simple8b code...\n";
       ad_utility::Simple8bCode::decode(encodedD, nofElements, ids.data());
@@ -858,14 +876,14 @@ void Index::dumpAsciiLists() const {
 
         ids.clear();
         ids.resize(nofElements + 250);
-        uint64_t *encodedW = new uint64_t[nofBytes / 8];
+        uint64_t* encodedW = new uint64_t[nofBytes / 8];
         off_t current = from;
         size_t ret = _textIndexFile.read(&nofCodebookBytes, sizeof(off_t),
                                          current);
         LOG(DEBUG) << "Nof Codebook Bytes: " << nofCodebookBytes << '\n';
         AD_CHECK_EQ(sizeof(off_t), ret);
         current += ret;
-        Id *codebookW = new Id[nofCodebookBytes / sizeof(Id)];
+        Id* codebookW = new Id[nofCodebookBytes / sizeof(Id)];
         ret = _textIndexFile.read(codebookW, nofCodebookBytes);
         current += ret;
         AD_CHECK_EQ(ret, size_t(nofCodebookBytes));
@@ -887,14 +905,14 @@ void Index::dumpAsciiLists() const {
                                      tbmd._cl._startScorelist);
       ids.clear();
       ids.resize(nofElements + 250);
-      uint64_t *encodedS = new uint64_t[nofBytes / 8];
+      uint64_t* encodedS = new uint64_t[nofBytes / 8];
       off_t current = from;
       size_t ret = _textIndexFile.read(&nofCodebookBytes, sizeof(off_t),
                                        current);
       LOG(DEBUG) << "Nof Codebook Bytes: " << nofCodebookBytes << '\n';
       AD_CHECK_EQ(sizeof(off_t), ret);
       current += ret;
-      Score *codebookS = new Score[nofCodebookBytes / sizeof(Score)];
+      Score* codebookS = new Score[nofCodebookBytes / sizeof(Score)];
       ret = _textIndexFile.read(codebookS, nofCodebookBytes);
       current += ret;
       AD_CHECK_EQ(ret, size_t(nofCodebookBytes));
@@ -924,7 +942,7 @@ void Index::dumpAsciiLists() const {
                                           tbmd._entityCl._startContextlist);
       ids.clear();
       ids.resize(nofElements + 250);
-      uint64_t *encodedD = new uint64_t[nofBytes / 8];
+      uint64_t* encodedD = new uint64_t[nofBytes / 8];
       _textIndexFile.read(encodedD, nofBytes, from);
       LOG(DEBUG) << "Decoding Simple8b code...\n";
       ad_utility::Simple8bCode::decode(encodedD, nofElements, ids.data());
@@ -940,14 +958,14 @@ void Index::dumpAsciiLists() const {
 
         ids.clear();
         ids.resize(nofElements + 250);
-        uint64_t *encodedW = new uint64_t[nofBytes / 8];
+        uint64_t* encodedW = new uint64_t[nofBytes / 8];
         off_t current = from;
         size_t ret = _textIndexFile.read(&nofCodebookBytes, sizeof(off_t),
                                          current);
         LOG(DEBUG) << "Nof Codebook Bytes: " << nofCodebookBytes << '\n';
         AD_CHECK_EQ(sizeof(off_t), ret);
         current += ret;
-        Id *codebookW = new Id[nofCodebookBytes / sizeof(Id)];
+        Id* codebookW = new Id[nofCodebookBytes / sizeof(Id)];
         ret = _textIndexFile.read(codebookW, nofCodebookBytes);
         current += ret;
         AD_CHECK_EQ(ret, size_t(nofCodebookBytes));
@@ -969,14 +987,14 @@ void Index::dumpAsciiLists() const {
                                      tbmd._entityCl._startScorelist);
       ids.clear();
       ids.resize(nofElements + 250);
-      uint64_t *encodedS = new uint64_t[nofBytes / 8];
+      uint64_t* encodedS = new uint64_t[nofBytes / 8];
       off_t current = from;
       size_t ret = _textIndexFile.read(&nofCodebookBytes, sizeof(off_t),
                                        current);
       LOG(DEBUG) << "Nof Codebook Bytes: " << nofCodebookBytes << '\n';
       AD_CHECK_EQ(sizeof(off_t), ret);
       current += ret;
-      Score *codebookS = new Score[nofCodebookBytes / sizeof(Score)];
+      Score* codebookS = new Score[nofCodebookBytes / sizeof(Score)];
       ret = _textIndexFile.read(codebookS, nofCodebookBytes);
       current += ret;
       AD_CHECK_EQ(ret, size_t(nofCodebookBytes));
@@ -1009,14 +1027,27 @@ size_t Index::getIndexOfBestSuitedElTerm(const vector<string>& terms) const {
   // pick the one with the smallest EL block to be read.
   std::vector<std::tuple<size_t, bool, size_t>> toBeSorted;
   for (size_t i = 0; i < terms.size(); ++i) {
+    bool entityTerm = (terms[i][0] == '<' && terms[i].back() == '>');
     IdRange range;
     if (terms[i].back() == PREFIX_CHAR) {
       _textVocab.getIdRangeForFullTextPrefix(terms[i], &range);
     } else {
-      _textVocab.getId(terms[i], &range._first);
+      if (entityTerm) {
+        if (!_vocab.getId(terms[i], &range._first)) {
+          LOG(DEBUG) << "Term: " << terms[i] << " not in entity vocabulary\n";
+          return i;
+        } else {
+
+        }
+      } else if (!_textVocab.getId(terms[i], &range._first)) {
+        LOG(DEBUG) << "Term: " << terms[i] << " not in vocabulary\n";
+        return i;
+      }
       range._last = range._first;
     }
-    auto tbmd = _textMeta.getBlockInfoByWordRange(range._first, range._last);
+    const auto& tbmd = entityTerm ? _textMeta.getBlockInfoByEntityId(
+        range._first) : _textMeta.getBlockInfoByWordRange(range._first,
+                                                          range._last);
     toBeSorted.emplace_back(
         std::make_tuple(i, tbmd._firstWordId == tbmd._lastWordId,
                         tbmd._entityCl._nofElements));
@@ -1232,6 +1263,9 @@ void Index::getECListForWordsAndSubtrees(
     // TODO
   }
 }
+
+
+
 
 
 
