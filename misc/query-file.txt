@@ -21,8 +21,6 @@ people_born_in_europe_limit100_offset100	SELECT DISTINCT ?p ?c WHERE { ?p <is-a>
 people_born_in_europe_limit100_offset200k	SELECT DISTINCT ?p ?c WHERE { ?p <is-a> <Person> . ?p <Place_of_birth> ?c . ?c <Contained_by> <Europe> } LIMIT 100 OFFSET 200000
 music_friend_athlete_limit1000	SELECT DISTINCT ?p ?s WHERE { ?p <is-a> <Musician> . ?s <is-a> <Athlete> . ?p <in-context> ?c . ?s <in-context> ?c . <word:friend> <in-context> ?c . FILTER(?p != ?s) } LIMIT 1000
 polit_friend_scient_mhp	SELECT DISTINCT ?p ?s WHERE { ?p <is-a> <Politician> . ?s <is-a> <Scientist> . ?p <in-context> ?c . ?s <in-context> ?c . <word:friend> <in-context> ?c . ?s <in-context> ?c2 . <word:manhattan> <in-context> ?c2 . <word:project> <in-context> ?c2 . FILTER(?p != ?s) }
-<<<<<<< HEAD
-=======
 csci_algorithm	SELECT ?x WHERE { ?x <is-a> <Computer_scientist> . ?x <in-context> ?c . <word:algorithm> <in-context> ?c }
 csci_doping	SELECT ?x WHERE { ?x <is-a> <Computer_scientist> . ?x <in-context> ?c . <word:doping> <in-context> ?c }
 csci_comp*	SELECT ?x WHERE { ?x <is-a> <Computer_scientist> . ?x <in-context> ?c . <word:comp*> <in-context> ?c  }
@@ -90,4 +88,3 @@ semsearch_british-monarch-head-of-state	SELECT ?x WHERE { ?x <is-a> <Country> . 
 semsearch_jacki-weaver-spouses	SELECT ?x WHERE { ?x <Spouse_(or_domestic_partner)> <Jacki_Weaver> }
 semsearch_inventor-python	SELECT ?x WHERE { <Python_(Programming_Language> <Developer> ?x }
 semsearch_wonders-ancient-world	SELECT ?x WHERE { ?x <is-a> <Structure> . ?x <in-context> ?c . <word:wonder*> <in-context> ?c . <word:ancient> <in-context> ?c . <word:world> <in-context> ?c }
->>>>>>> 38db2db... Added almost all (reasons in TODO file) of the semsearch queries and made some fixes in the eval script.
