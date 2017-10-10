@@ -58,8 +58,11 @@ public:
   void setHasBlocks(bool hasBlocks);
 
   void setCol1LogMultiplicity(uint8_t mult);
+
   void setCol2LogMultiplicity(uint8_t mult);
+
   uint8_t getCol1LogMultiplicity() const;
+
   uint8_t getCol2LogMultiplicity() const;
 
   size_t getNofElements() const;
@@ -190,7 +193,6 @@ inline ad_utility::File& operator<<(ad_utility::File& f,
 
 class IndexMetaData {
 public:
-  IndexMetaData();
 
   void
   add(const FullRelationMetaData& rmd, const BlockBasedRelationMetaData& bRmd);
@@ -199,15 +201,23 @@ public:
 
   const RelationMetaData getRmd(Id relId) const;
 
-  void createFromByteBuffer(unsigned char* buf);
+  bool loadAndAddRelationMetaData(Id relId);
 
-  bool relationExists(Id relId) const;
+  void createFromByteBufferWithPreload(unsigned char* buf);
+
+  void createWithoutPreload(ad_utility::File* indexFile, off_t startMeta,
+                            off_t startRelIdToOffset, off_t endMeta);
+
+  bool relationExists(Id relId);
 
   string statistics() const;
 
   size_t getNofTriples() const { return _nofTriples; }
 
-  void setName(const string& name) { _name = name; }
+  void setName(const string& name) {
+    AD_CHECK_LE(MAX_NAME_SIZE, name.size());
+    _name = name;
+  }
 
   const string& getName() const { return _name; }
 
@@ -221,12 +231,26 @@ private:
   ad_utility::HashMap<Id, FullRelationMetaData> _data;
   ad_utility::HashMap<Id, BlockBasedRelationMetaData> _blockData;
 
+  bool _preloaded;
+  // The members below are only needed when using withoput preload
+  ad_utility::File* _indexFile;
+  off_t _startMeta;
+  off_t _startRelIdToOffset;
+  off_t _endMeta;
+
+
   friend ad_utility::File& operator<<(ad_utility::File& f,
                                       const IndexMetaData& rmd);
 
   size_t getNofBlocksForRelation(const Id relId) const;
 
   size_t getTotalBytesForRelation(const FullRelationMetaData& frmd) const;
+
+  //! Finds the relId+offset pairs for a relation.
+  //! If the relation is not contained, res.first will mismatch relId
+  //! If the pair is the last in the list, follower will be equal to res.
+  void binarySearchIndexFile(const Id relId, pair<Id, off_t>& res,
+                             pair<Id, off_t>& follower);
 };
 
 ad_utility::File& operator<<(ad_utility::File& f, const IndexMetaData& imd);

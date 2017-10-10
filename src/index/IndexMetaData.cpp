@@ -7,10 +7,8 @@
 #include <algorithm>
 #include "./IndexMetaData.h"
 #include "../util/ReadableNumberFact.h"
+#include "../global/Constants.h"
 
-// _____________________________________________________________________________
-IndexMetaData::IndexMetaData() : _offsetAfter(0), _nofTriples(0), _name() {
-}
 
 // _____________________________________________________________________________
 void IndexMetaData::add(const FullRelationMetaData& rmd,
@@ -32,7 +30,7 @@ off_t IndexMetaData::getOffsetAfter() const {
 }
 
 // _____________________________________________________________________________
-void IndexMetaData::createFromByteBuffer(unsigned char* buf) {
+void IndexMetaData::createFromByteBufferWithPreload(unsigned char* buf) {
   size_t nameLength = *reinterpret_cast<size_t*>(buf);
   size_t nofBytesDone = sizeof(size_t);
   _name.assign(reinterpret_cast<char*>(buf + nofBytesDone), nameLength);
@@ -56,12 +54,73 @@ void IndexMetaData::createFromByteBuffer(unsigned char* buf) {
       add(rmd, BlockBasedRelationMetaData());
     }
   }
+  _preloaded = true;
 }
 
 // _____________________________________________________________________________
+void IndexMetaData::createWithoutPreload(ad_utility::File* indexFile,
+                                         off_t startMeta,
+                                         off_t startRelIdToOffset,
+                                         off_t endMeta) {
+  size_t bufSize = std::min(MAX_NAME_SIZE + 20 * sizeof(size_t),
+                            static_cast<size_t>(endMeta - startMeta));
+  auto* buf = new unsigned char[bufSize];
+  _indexFile = indexFile;
+  _startMeta = startMeta;
+  _startRelIdToOffset = startRelIdToOffset;
+  _endMeta = endMeta;
+
+  indexFile->read(buf, bufSize, startMeta);
+  size_t nameLength = *reinterpret_cast<size_t*>(buf);
+  size_t nofBytesDone = sizeof(size_t);
+  _name.assign(reinterpret_cast<char*>(buf + nofBytesDone), nameLength);
+  nofBytesDone += nameLength;
+  size_t nofRelations = *reinterpret_cast<size_t*>(buf + nofBytesDone);
+  nofBytesDone += sizeof(size_t);
+  _offsetAfter = *reinterpret_cast<off_t*>(buf + nofBytesDone);
+  nofBytesDone += sizeof(off_t);
+
+  _nofTriples = 0;
+
+  delete[] buf;
+}
+
+// _____________________________________________________________________________
+bool IndexMetaData::loadAndAddRelationMetaData(Id relId) {
+  std::pair<Id, off_t> p, next;
+  binarySearchIndexFile(relId, p, next);
+  if (p.first != relId) {
+    return false;
+  } else {
+    off_t excluding = (p.first == next.first ? _startRelIdToOffset
+                                             : next.second);
+    off_t bufSize = excluding - p.second;
+    auto* buf = new unsigned char[bufSize];
+    _indexFile->read(buf, bufSize, p.second);
+    FullRelationMetaData rmd;
+    size_t nofBytesDone = 0;
+    rmd.createFromByteBuffer(buf);
+    nofBytesDone += rmd.bytesRequired();
+    if (rmd.hasBlocks()) {
+      BlockBasedRelationMetaData bRmd;
+      bRmd.createFromByteBuffer(buf + nofBytesDone);
+      nofBytesDone += bRmd.bytesRequired();
+      add(rmd, bRmd);
+    } else {
+      add(rmd, BlockBasedRelationMetaData());
+    }
+  }
+}
+
+
+// _____________________________________________________________________________
 const RelationMetaData IndexMetaData::getRmd(Id relId) const {
+  // relationExists always should have been called before.
   auto it = _data.find(relId);
-  AD_CHECK(it != _data.end());
+  if (it == _data.end()) {
+    AD_THROW(ad_semsearch::Exception::ASSERT_FAILED,
+             "Should have called relationExists() before!")
+  }
   RelationMetaData ret(it->second);
   if (it->second.hasBlocks()) {
     ret._rmdBlocks = &_blockData.find(it->first)->second;
@@ -70,8 +129,13 @@ const RelationMetaData IndexMetaData::getRmd(Id relId) const {
 }
 
 // _____________________________________________________________________________
-bool IndexMetaData::relationExists(Id relId) const {
-  return _data.count(relId) > 0;
+bool IndexMetaData::relationExists(Id relId) {
+  if (_preloaded) {
+    return _data.count(relId) > 0;
+  } else {
+    if (_data.count(relId) > 0) { return true; }
+    return loadAndAddRelationMetaData(relId);
+  }
 }
 
 // _____________________________________________________________________________
@@ -101,7 +165,8 @@ string IndexMetaData::statistics() const {
   std::locale locWithNumberGrouping(loc, &facet);
   os.imbue(locWithNumberGrouping);
   os << '\n';
-  os << "-------------------------------------------------------------------\n";
+  os
+      << "-------------------------------------------------------------------\n";
   os << "----------------------------------\n";
   os << "Index Statistics:\n";
   os << "----------------------------------\n\n";
@@ -122,7 +187,8 @@ string IndexMetaData::statistics() const {
   os << "Size of pair index:             "
      << totalPairIndexBytes << " bytes \n";
   os << "Total Size:                     " << totalBytes << " bytes \n";
-  os << "-------------------------------------------------------------------\n";
+  os
+      << "-------------------------------------------------------------------\n";
   return os.str();
 }
 
@@ -142,7 +208,8 @@ size_t IndexMetaData::getTotalBytesForRelation(
     const FullRelationMetaData& frmd) const {
   auto it = _blockData.find(frmd._relId);
   if (it != _blockData.end()) {
-    return static_cast<size_t>(it->second._offsetAfter - frmd._startFullIndex);
+    return static_cast<size_t>(it->second._offsetAfter -
+                               frmd._startFullIndex);
   } else {
     return frmd.getNofBytesForFulltextIndex();
   }
@@ -154,15 +221,62 @@ size_t IndexMetaData::getNofDistinctC1() const {
 }
 
 // _____________________________________________________________________________
+void IndexMetaData::binarySearchIndexFile(const Id relId, pair<Id, off_t>& res,
+                                          pair<Id, off_t>& follower) {
+  size_t elemSize = sizeof(Id) + sizeof(off_t);
+  auto* buf = new unsigned char[elemSize];
+  auto beg = static_cast<int>(_startRelIdToOffset);
+  auto end = static_cast<int>(_endMeta);
+
+  while (beg <= end) {
+    auto middle = static_cast<int>((end - beg) * elemSize);
+    _indexFile->seek(middle, beg);
+    _indexFile->read(buf, elemSize);
+    auto id = *static_cast<Id*>(buf);
+    if (id == relId) {
+      res.first = id;
+      auto off = *static_cast<off_t*>(buf + sizeof(size_t));
+      res.second = off;
+      if (middle + 2 * elemSize > static_cast<int>(_endMeta)) {
+        follower = res;
+      } else {
+        _indexFile->seek(middle + elemSize, middle);
+        _indexFile->read(buf, elemSize);
+        follower.first = id;
+        off = *static_cast<off_t*>(buf + sizeof(size_t));
+        follower.second = off;
+      }
+      delete[] buf;
+      return;
+    } else if (relId > id) {
+      beg = static_cast<int>(middle + elemSize);
+    } else {
+      end = static_cast<int>(middle - elemSize);
+    }
+  }
+  // Case: not found.
+  res.first = std::numeric_limits<Id>::max();
+  delete[] buf;
+}
+
+
+// _____________________________________________________________________________
 FullRelationMetaData::FullRelationMetaData() :
     _relId(0), _startFullIndex(0), _typeMultAndNofElements(0) {
 }
 
 // _____________________________________________________________________________
-FullRelationMetaData::FullRelationMetaData(Id relId, off_t startFullIndex,
-                                           size_t nofElements,
-                                           double col1Mult, double col2Mult,
-                                           bool isFunctional, bool hasBlocks) :
+FullRelationMetaData::FullRelationMetaData(Id
+                                           relId, off_t
+                                           startFullIndex,
+                                           size_t
+                                           nofElements,
+                                           double
+                                           col1Mult, double
+                                           col2Mult,
+                                           bool
+                                           isFunctional, bool
+                                           hasBlocks) :
     _relId(relId), _startFullIndex(startFullIndex),
     _typeMultAndNofElements(nofElements) {
   assert(col1Mult >= 1);
@@ -244,7 +358,8 @@ uint8_t FullRelationMetaData::getCol2LogMultiplicity() const {
 
 
 // _____________________________________________________________________________
-pair<off_t, size_t> BlockBasedRelationMetaData::getBlockStartAndNofBytesForLhs(
+pair<off_t, size_t>
+BlockBasedRelationMetaData::getBlockStartAndNofBytesForLhs(
     Id lhs) const {
 
   auto it = std::lower_bound(_blocks.begin(), _blocks.end(), lhs,
@@ -319,7 +434,8 @@ BlockBasedRelationMetaData& BlockBasedRelationMetaData::createFromByteBuffer(
                                                 sizeof(_offsetAfter));
   _blocks.resize(nofBlocks);
   memcpy(_blocks.data(),
-         buffer + sizeof(_startRhs) + sizeof(_offsetAfter) + sizeof(nofBlocks),
+         buffer + sizeof(_startRhs) + sizeof(_offsetAfter) +
+         sizeof(nofBlocks),
          nofBlocks * sizeof(BlockMetaData));
 
   return *this;
@@ -353,8 +469,10 @@ BlockBasedRelationMetaData::BlockBasedRelationMetaData() :
 
 // _____________________________________________________________________________
 BlockBasedRelationMetaData::BlockBasedRelationMetaData(
-    off_t startRhs,
-    off_t offsetAfter,
+    off_t
+    startRhs,
+    off_t
+    offsetAfter,
     const vector<BlockMetaData>& blocks) :
     _startRhs(startRhs), _offsetAfter(offsetAfter), _blocks(blocks) {}
 
