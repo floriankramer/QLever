@@ -15,6 +15,7 @@
 #include "./TextMetaData.h"
 #include "./DocsDB.h"
 #include "../engine/ResultTable.h"
+#include "PermutationSettings.h"
 
 
 using std::string;
@@ -54,7 +55,7 @@ public:
   // that has previously been constructed.
   // Read necessary meta data into memory and opens file handles.
   void createFromOnDiskIndex(const string& onDiskBase,
-                             bool allPermutations = false,
+                             PermutationSettings settin = PermutationSettings(),
                              bool onDiskLiterals = false);
 
   // Adds a text index to a fully initialized KB index.
@@ -126,28 +127,42 @@ public:
   void scanOSP(const string& object, WidthTwoList* result) const;
 
   void scanPSO(Id predicate, WidthTwoList* result) const;
-  void scanPOS(Id predicate, WidthTwoList* result) const;
-  void scanSPO(Id subject, WidthTwoList* result) const;
-  void scanSOP(Id subject, WidthTwoList* result) const;
-  void scanOPS(Id object, WidthTwoList* result) const;
-  void scanOSP(Id object, WidthTwoList* result) const;
 
+  void scanPOS(Id predicate, WidthTwoList* result) const;
+
+  void scanSPO(Id subject, WidthTwoList* result) const;
+
+  void scanSOP(Id subject, WidthTwoList* result) const;
+
+  void scanOPS(Id object, WidthTwoList* result) const;
+
+  void scanOSP(Id object, WidthTwoList* result) const;
 
 
   // Get multiplicities with given var (SCAN for 2 cols)
   vector<float> getPSOMultiplicities(const string& key) const;
+
   vector<float> getPOSMultiplicities(const string& key) const;
+
   vector<float> getSPOMultiplicities(const string& key) const;
+
   vector<float> getSOPMultiplicities(const string& key) const;
+
   vector<float> getOSPMultiplicities(const string& key) const;
+
   vector<float> getOPSMultiplicities(const string& key) const;
 
   // Get multiplicities for full scans (dummy)
   vector<float> getPSOMultiplicities() const;
+
   vector<float> getPOSMultiplicities() const;
+
   vector<float> getSPOMultiplicities() const;
+
   vector<float> getSOPMultiplicities() const;
+
   vector<float> getOSPMultiplicities() const;
+
   vector<float> getOPSMultiplicities() const;
 
   // --------------------------------------------------------------------------
@@ -242,8 +257,11 @@ public:
   size_t getNofTriples() const { return _psoMeta.getNofTriples(); }
 
   size_t getNofTextRecords() const { return _textMeta.getNofTextRecords(); }
+
   size_t getNofWordPostings() const { return _textMeta.getNofWordPostings(); }
-  size_t getNofEntityPostings() const { return _textMeta.getNofEntityPostings(); }
+
+  size_t
+  getNofEntityPostings() const { return _textMeta.getNofEntityPostings(); }
 
   size_t getNofSubjects() const {
     if (hasAllPermutations()) {

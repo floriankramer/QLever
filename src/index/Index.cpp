@@ -9,6 +9,7 @@
 #include "./Index.h"
 #include "../parser/NTriplesParser.h"
 #include "../util/Conversions.h"
+#include "./PermutationSettings.h"
 
 using std::array;
 
@@ -421,7 +422,8 @@ void Index::writeNonFunctionalRelation(
 
 // _____________________________________________________________________________
 void
-Index::createFromOnDiskIndex(const string& onDiskBase, bool allPermutations,
+Index::createFromOnDiskIndex(const string& onDiskBase,
+                             PermutationSettings settings,
                              bool onDiskLiterals) {
   _onDiskBase = onDiskBase;
   _vocab.readFromFile(onDiskBase + ".vocabulary",
@@ -431,10 +433,11 @@ Index::createFromOnDiskIndex(const string& onDiskBase, bool allPermutations,
   AD_CHECK(_psoFile.isOpen() && _posFile.isOpen());
   // PSO
   off_t metaFrom;
+  off_t startOfPairs;
   off_t metaTo = _psoFile.getLastOffset(&metaFrom);
   unsigned char* buf = new unsigned char[metaTo - metaFrom];
   _psoFile.read(buf, static_cast<size_t>(metaTo - metaFrom), metaFrom);
-  _psoMeta.createFromByteBuffer(buf);
+  _psoMeta.createFromByteBufferWithPreload(buf);
   delete[] buf;
   LOG(INFO) << "Registered PSO permutation: " << _psoMeta.statistics()
             << std::endl;
@@ -442,25 +445,55 @@ Index::createFromOnDiskIndex(const string& onDiskBase, bool allPermutations,
   metaTo = _posFile.getLastOffset(&metaFrom);
   buf = new unsigned char[metaTo - metaFrom];
   _posFile.read(buf, static_cast<size_t>(metaTo - metaFrom), metaFrom);
-  _posMeta.createFromByteBuffer(buf);
+  _posMeta.createFromByteBufferWithPreload(buf);
   delete[] buf;
   LOG(INFO) << "Registered POS permutation: " << _posMeta.statistics()
             << std::endl;
-  if (allPermutations) {
+
+  // SPO
+  if (settings._spoSetting != PermutationSettings::DO_NOT_USE) {
     _spoFile.open(string(_onDiskBase + ".index.spo").c_str(), "r");
+    AD_CHECK(_spoFile.isOpen());
+    metaTo = _spoFile.getLastOffset(&metaFrom);
+    if (settings._spoSetting == PermutationSettings::FROM_DISK) {
+      startOfPairs = _spoFile.returnOffsetBeforeLastOffset();
+      _spoMeta.createWithoutPreload(&_spoFile, metaFrom, startOfPairs, metaTo);
+    } else {
+      buf = new unsigned char[metaTo - metaFrom];
+      _spoFile.read(buf, static_cast<size_t>(metaTo - metaFrom), metaFrom);
+      _spoMeta.createFromByteBufferWithPreload(buf);
+      delete[] buf;
+    }
+    LOG(INFO) << "Registered SPO permutation: " << _spoMeta.statistics()
+              << std::endl;
+  }
+
+  // SOP
+  if (settings._sopSetting != PermutationSettings::DO_NOT_USE) {
+    _sopFile.open(string(_onDiskBase + ".index.sop").c_str(), "r");
+    AD_CHECK(_sopFile.isOpen());
+    metaTo = _sopFile.getLastOffset(&metaFrom);
+    if (settings._sopSetting == PermutationSettings::FROM_DISK) {
+      startOfPairs = _sopFile.returnOffsetBeforeLastOffset();
+      _sopMeta.createWithoutPreload(&_sopFile, metaFrom, startOfPairs, metaTo);
+    } else {
+      buf = new unsigned char[metaTo - metaFrom];
+      _sopFile.read(buf, static_cast<size_t>(metaTo - metaFrom), metaFrom);
+      _sopMeta.createFromByteBufferWithPreload(buf);
+      delete[] buf;
+    }
+    LOG(INFO) << "Registered SPO permutation: " << _spoMeta.statistics()
+              << std::endl;
+  }
+
+  // TODO: continue here with OPS and OSP
+
+    AD_CHECK(_spoFile.isOpen() && _sopFile.isOpen() && _ospFile.isOpen() &&
+             _opsFile.isOpen());
     _sopFile.open(string(_onDiskBase + ".index.sop").c_str(), "r");
     _ospFile.open(string(_onDiskBase + ".index.osp").c_str(), "r");
     _opsFile.open(string(_onDiskBase + ".index.ops").c_str(), "r");
-    AD_CHECK(_spoFile.isOpen() && _sopFile.isOpen() && _ospFile.isOpen() &&
-             _opsFile.isOpen());
-    // SPO
-    metaTo = _spoFile.getLastOffset(&metaFrom);
-    buf = new unsigned char[metaTo - metaFrom];
-    _spoFile.read(buf, static_cast<size_t>(metaTo - metaFrom), metaFrom);
-    _spoMeta.createFromByteBuffer(buf);
-    delete[] buf;
-    LOG(INFO) << "Registered SPO permutation: " << _spoMeta.statistics()
-              << std::endl;
+
     // SOP
     metaTo = _sopFile.getLastOffset(&metaFrom);
     buf = new unsigned char[metaTo - metaFrom];
