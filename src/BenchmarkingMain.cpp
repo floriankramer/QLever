@@ -183,6 +183,7 @@ int main(int argc, char** argv) {
 }
 
 QueryResult processQuery(QueryExecutionContext& qec, const string& query) {
+  qec.clearCache();
   QueryResult result;
   ad_utility::Timer t;
   t.start();
