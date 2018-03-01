@@ -93,6 +93,8 @@ target_link_libraries (ServerMain engine)
 add_executable(WriteIndexListsMain src/WriteIndexListsMain.cpp)
 target_link_libraries (WriteIndexListsMain engine)
 
+add_executable(BenchmarkingMain src/BenchmarkingMain.cpp)
+target_link_libraries(BenchmarkingMain engine)
 
 #add_executable(TextFilterComparison src/experiments/TextFilterComparison.cpp)
 #target_link_libraries (TextFilterComparison experiments)
