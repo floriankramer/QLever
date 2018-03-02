@@ -220,10 +220,10 @@ QueryResult processQuery(QueryExecutionContext& qec, const string& query) {
   if (pq._offset.size() > 0) {
     offset = static_cast<size_t>(atol(pq._offset.c_str()));
   }
-  // qet.writeResultToStream(cout, pq._selectedVariables, limit, offset);
+  ResultTable res = qet.getResult();
   t.stop();
   result.timeMs = t.usecs() / 1000.0;
-  result.numResults = qet.getResult().size();
+  result.numResults = res.size();
   std::cout << "\nDone. Time: " << t.usecs() / 1000.0 << " ms\n";
   std::cout << "\nNumber of matches (no limit): " << qet.getResult().size() <<
                "\n";
