@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
   optind = 1;
   // Process command line arguments.
   while (true) {
-    int c = getopt_long(argc, argv, "ac:i:lor:t", options, NULL);
+    int c = getopt_long(argc, argv, "ac:i:l:or:t", options, NULL);
     if (c == -1) break;
     switch (c) {
       case 'a':
@@ -163,14 +163,31 @@ int main(int argc, char** argv) {
       queryBuf << qf.rdbuf();
       std::string query = queryBuf.str();
       QueryResult result;
+      vector<double> times;
       for (size_t numRun = 0; numRun < numRuns; numRun++) {
         QueryResult runResult = processQuery(qec, query);
         result.timeMs += runResult.timeMs;
         result.numResults = runResult.numResults;
+        times.push_back(runResult.timeMs);
       }
+      double averageTime = result.timeMs / numRuns;
+      double sd = 0;
+      for (double d : times) {
+        sd += std::pow(d - averageTime, 2);
+      }
+      sd = std::sqrt(sd / (times.size()));
       log << "Query:\n" << query << endl;
       log << "Num results: " << result.numResults << endl;
-      log << "Average time: " << (result.timeMs / numRuns) << " ms" << endl;
+      log << "Average time: " << averageTime << " ms" << endl;
+      log << "All times: [";
+      for (size_t i = 0; i < times.size(); i++) {
+        log << times[i];
+        if (i + 1 < times.size()) {
+          log << ", ";
+        }
+      }
+      log << "]" << endl;
+      log << "Standard derivation: " << sd << endl;
       log << endl << endl;
     }
   } catch (const std::exception& e) {
