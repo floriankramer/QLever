@@ -93,6 +93,12 @@ set(RE2_BUILD_TESTING OFF CACHE BOOL "enable testing for RE2" FORCE)
 add_subdirectory(third_party/re2)
 include_directories(SYSTEM third_party/re2)
 
+
+################################
+# Yaml 
+################################
+find_package(yaml-CPP)
+
 # reinstate original flags including all warnings
 set(CMAKE_CXX_FLAGS "${LOCAL_CXX_BACKUP_FLAGS}")
 
@@ -102,6 +108,8 @@ message(STATUS "CXX_FLAGS_RELEASE are : " ${CMAKE_CXX_FLAGS_RELEASE})
 message(STATUS "CXX_FLAGS_DEBUG are : " ${CMAKE_CXX_FLAGS_DEBUG})
 message(STATUS "IMPORTANT: Make sure you have selected the desired CMAKE_BUILD_TYPE")
 message(STATUS ---)
+
+
 
 ###############################################################################
 ##### Actual project configuration #####
@@ -134,6 +142,9 @@ configure_file(src/web/index.html index.html)
 configure_file(src/web/style.css style.css)
 configure_file(src/web/script.js script.js)
 
+
+add_executable(FilterPaths src/FilterPathsMain.cpp)
+target_link_libraries(FilterPaths parser yaml-cpp ${CMAKE_THREAD_LIBS_INIT})
 
 add_executable(IndexBuilderMain src/index/IndexBuilderMain.cpp)
 target_link_libraries(IndexBuilderMain index ${CMAKE_THREAD_LIBS_INIT})
