@@ -5,6 +5,8 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include "parser/SparqlParser.h"
+
 void printHelp(char* name) {
   std::cout << "Usage: " << name << " <input-file> <output-file>" << std::endl;
   std::cout
@@ -53,7 +55,49 @@ void writeQuerySet(const std::string& path, const QuerySet& set) {
   f << out;
 }
 
-bool doesQueryContainPropertyPath(const Query& q) { return true; }
+bool doesQueryContainPropertyPath(const Query& q) {
+  try {
+    ParsedQuery pq = SparqlParser(q.sparql).parse();
+    pq.expandPrefixes();
+    std::vector<std::shared_ptr<const ParsedQuery::GraphPattern>>
+        patterns_to_process;
+    patterns_to_process.emplace_back(pq._rootGraphPattern);
+    while (!patterns_to_process.empty()) {
+      std::shared_ptr<const ParsedQuery::GraphPattern> p =
+          patterns_to_process.back();
+      patterns_to_process.pop_back();
+      for (const SparqlTriple& t : p->_whereClauseTriples) {
+        if (t._p._operation != PropertyPath::Operation::IRI) {
+          return true;
+        }
+      }
+
+      for (const std::shared_ptr<const ParsedQuery::GraphPatternOperation>& o :
+           p->_children) {
+        switch (o->_type) {
+          case ParsedQuery::GraphPatternOperation::Type::OPTIONAL:
+          case ParsedQuery::GraphPatternOperation::Type::UNION:
+            patterns_to_process.insert(patterns_to_process.begin(),
+                                       o->_childGraphPatterns.begin(),
+                                       o->_childGraphPatterns.end());
+            break;
+          case ParsedQuery::GraphPatternOperation::Type::SUBQUERY:
+            patterns_to_process.push_back(o->_subquery->_rootGraphPattern);
+            break;
+          case ParsedQuery::GraphPatternOperation::Type::TRANS_PATH:
+            return true;
+            break;
+        }
+      }
+    }
+  } catch (const std::exception& e) {
+    std::cout << e.what() << std::endl;
+    return false;
+  } catch (...) {
+    return false;
+  }
+  return false;
+}
 
 int main(int argc, char** argv) {
   if (argc != 3) {
