@@ -2,13 +2,23 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <sstream>
 
 #include <yaml-cpp/yaml.h>
 
 #include "parser/SparqlParser.h"
 
+const std::string prefixes = R"(
+PREFIX p: <http://www.wikidata.org/prop/>
+PREFIX psn: <http://www.wikidata.org/prop/statement/value-normalized/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wikibase: <http://wikiba.se/ontology#>
+)";
+
 void printHelp(char* name) {
-  std::cout << "Usage: " << name << " <input-file> <output-file>" << std::endl;
+  std::cout << "Usage: " << name << " <input-file> <query-output-file> <paths-output>" << std::endl;
   std::cout
       << "Parses the input yaml file and writes all queries within into the "
          "output file if they can be parsed and contain a property path"
@@ -42,20 +52,33 @@ QuerySet parseQuerySet(const std::string& path) {
 }
 
 void writeQuerySet(const std::string& path, const QuerySet& set) {
-  YAML::Node out;
-  out["kb"] = set.kb;
+  YAML::Emitter emitter;
+  emitter << YAML::BeginMap;
+  emitter << YAML::Key << "kb";
+  emitter << YAML::Value << set.kb;
+  emitter << YAML::Key << "queries";
+  emitter << YAML::Value;
+  emitter << YAML::BeginSeq;
   for (const Query& q : set.queries) {
-    YAML::Node query;
-    query["query"] = q.name;
-    query["sparql"] = q.sparql;
-    query["type"] = q.type;
-    out["queries"].push_back(query);
+    emitter << YAML::BeginMap;
+    emitter << YAML::Key << "query";
+    emitter << YAML::Value << q.name;
+
+    emitter << YAML::Key << "sparql";
+    emitter << YAML::Value << YAML::Literal << q.sparql;
+
+    emitter << YAML::Key << "type";
+    emitter << YAML::Value << q.type;
+    emitter << YAML::EndMap;
   }
+  emitter << YAML::EndSeq;
+  emitter << YAML::EndMap;
   std::ofstream f(path);
-  f << out;
+  f << emitter.c_str();
 }
 
-bool doesQueryContainPropertyPath(const Query& q) {
+bool doesQueryContainPropertyPath(const Query& q, std::vector<SparqlTriple> *path_triples) {
+  bool contains_path = false;
   try {
     ParsedQuery pq = SparqlParser(q.sparql).parse();
     pq.expandPrefixes();
@@ -68,7 +91,8 @@ bool doesQueryContainPropertyPath(const Query& q) {
       patterns_to_process.pop_back();
       for (const SparqlTriple& t : p->_whereClauseTriples) {
         if (t._p._operation != PropertyPath::Operation::IRI) {
-          return true;
+          path_triples->push_back(t);
+          contains_path = true;
         }
       }
 
@@ -96,22 +120,52 @@ bool doesQueryContainPropertyPath(const Query& q) {
   } catch (...) {
     return false;
   }
-  return false;
+  return contains_path;
+}
+
+QuerySet queriesFromPaths(const std::vector<SparqlTriple> &paths) {
+  QuerySet set;
+  set.kb = "wikidata";
+  for (const SparqlTriple t : paths) {
+    Query q;
+    q.name = t.asString();
+    q.type = "single path";
+    std::ostringstream s;
+    s << prefixes;
+    s << "SELECT ";
+    if (t._s[0] == '?') {
+      s << t._s << " ";
+    }
+    if (t._o[0] == '?') {
+      s << t._o << " ";
+    }
+    s << " WHERE {\n";
+    s << t._s << " " << t._p << " " << t._o << "\n";
+    s << "}";
+    q.sparql = s.str();
+    set.queries.emplace_back(q);
+  }
+
+  return set;
 }
 
 int main(int argc, char** argv) {
-  if (argc != 3) {
+  if (argc != 4) {
     printHelp(argv[0]);
     return 1;
   }
+  std::vector<SparqlTriple> path_triples;
   QuerySet in = parseQuerySet(std::string(argv[1]));
   QuerySet out;
   out.kb = in.kb;
   for (const Query& q : in.queries) {
-    if (doesQueryContainPropertyPath(q)) {
+    if (doesQueryContainPropertyPath(q, &path_triples)) {
       out.queries.emplace_back(q);
     }
   }
   writeQuerySet(std::string(argv[2]), out);
+
+  QuerySet p = queriesFromPaths(path_triples);
+  writeQuerySet(std::string(argv[3]), p);
   return 0;
 }
