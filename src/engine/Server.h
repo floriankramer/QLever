@@ -77,6 +77,10 @@ class Server {
                              const QueryExecutionTree& qet,
                              size_t sendMax = MAX_NOF_ROWS_IN_RESULT) const;
 
+  string composeResponseSparqlJson(
+      const ParsedQuery& query, const QueryExecutionTree& qet,
+      size_t sendMax = MAX_NOF_ROWS_IN_RESULT) const;
+
   string composeResponseSepValues(const ParsedQuery& query,
                                   const QueryExecutionTree& qet,
                                   char sep) const;

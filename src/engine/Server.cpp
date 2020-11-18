@@ -209,6 +209,10 @@ void Server::process(Socket* client) {
         contentType =
             "text/tab-separated-values\r\n"
             "Content-Disposition: attachment;filename=export.tsv";
+      } else if (ad_utility::getLowercase(params["action"]) ==
+                 "sparql_json_export") {
+        response = composeResponseSparqlJson(pq, qet, maxSend);
+        contentType = "application/sparql-results+json";
       } else {
         // Normal case: JSON response
         response = composeResponseJson(pq, qet, maxSend);
@@ -387,6 +391,30 @@ string Server::composeResponseJson(const ParsedQuery& query,
       std::to_string(_requestProcessingTimer.usecs() / 1000.0) + "ms";
   j["time"]["computeResult"] = std::to_string(compResultUsecs / 1000.0) + "ms";
 
+  return j.dump(4);
+}
+
+// _____________________________________________________________________________
+string Server::composeResponseSparqlJson(const ParsedQuery& query,
+                                         const QueryExecutionTree& qet,
+                                         size_t sendMax) const {
+  shared_ptr<const ResultTable> rt = qet.getResult();
+  _requestProcessingTimer.stop();
+  nlohmann::json j;
+  {
+    size_t limit = MAX_NOF_ROWS_IN_RESULT;
+    size_t offset = 0;
+    if (query._limit.size() > 0) {
+      limit = static_cast<size_t>(atol(query._limit.c_str()));
+    }
+    if (query._offset.size() > 0) {
+      offset = static_cast<size_t>(atol(query._offset.c_str()));
+    }
+    _requestProcessingTimer.cont();
+    j = qet.writeResultAsSparqlJson(query._selectedVariables,
+                                    std::min(limit, sendMax), offset);
+    _requestProcessingTimer.stop();
+  }
   return j.dump(4);
 }
 
