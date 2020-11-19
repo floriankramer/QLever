@@ -19,6 +19,7 @@ add_library(engine
         Filter.h Filter.cpp
         Server.h Server.cpp
         QueryPlanner.cpp QueryPlanner.h
+        ScanningJoin.cpp ScanningJoin.h
         QueryPlanningCostFactors.cpp QueryPlanningCostFactors.h
         TwoColumnJoin.cpp TwoColumnJoin.h
         OptionalJoin.cpp OptionalJoin.h
@@ -32,4 +33,4 @@ add_library(engine
         IdTable.h
         )
 
-target_link_libraries(engine index parser absl::flat_hash_set)
+target_link_libraries(engine index parser absl::flat_hash_set uWebSockets)
