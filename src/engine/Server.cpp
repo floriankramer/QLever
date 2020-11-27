@@ -25,7 +25,7 @@ Server::~Server() {
 }
 
 // _____________________________________________________________________________
-void Server::initialize(const string& ontologyBaseName, bool useText,
+void Server::initialize(const string &ontologyBaseName, bool useText,
                         bool usePatterns, bool usePatternTrick) {
   LOG(INFO) << "Initializing server..." << std::endl;
 
@@ -48,22 +48,24 @@ void Server::run() {
     exit(1);
   }
 
-  uWS::App()
-      .get("/*", [this](uWS::HttpResponse<false>* resp,
-                        uWS::HttpRequest* req) { process(resp, req); })
-      .listen(_port,
-              [this](auto* token) {
-                if (!token) {
-                  LOG(ERROR) << "Failed to create socket on port " << _port
-                             << "." << std::endl;
-                  exit(1);
-                }
-              })
-      .run();
+  for (int i = 0; i < _numThreads; ++i) {
+    uWS::App()
+        .get("/*", [this](uWS::HttpResponse<false> *resp,
+                          uWS::HttpRequest *req) { process(resp, req); })
+        .listen(_port,
+                [this](auto *token) {
+                  if (!token) {
+                    LOG(ERROR) << "Failed to create socket on port " << _port
+                               << "." << std::endl;
+                    exit(1);
+                  }
+                })
+        .run();
+  }
 }
 
 // _____________________________________________________________________________
-void Server::process(uWS::HttpResponse<false>* resp, uWS::HttpRequest* req) {
+void Server::process(uWS::HttpResponse<false> *resp, uWS::HttpRequest *req) {
   string file = std::string(req->getUrl());
   if (file == "/") {
     file = "/index.html";
@@ -148,7 +150,7 @@ void Server::process(uWS::HttpResponse<false>* resp, uWS::HttpRequest* req) {
     QueryPlanner qp(&qec);
     qp.setEnablePatternTrick(_enablePatternTrick);
     QueryExecutionTree qet = qp.createExecutionTree(pq);
-    qet.isRoot() = true;  // allow pinning of the final result
+    qet.isRoot() = true; // allow pinning of the final result
     LOG(TRACE) << qet.asString() << std::endl;
 
     std::string response;
@@ -157,16 +159,14 @@ void Server::process(uWS::HttpResponse<false>* resp, uWS::HttpRequest* req) {
     if (ad_utility::getLowercase(req->getQuery("action")) == "csv_export") {
       // CSV export
       response = composeResponseSepValues(pq, qet, ',');
-      contentType =
-          "text/csv\r\n"
-          "Content-Disposition: attachment;filename=export.csv";
+      contentType = "text/csv\r\n"
+                    "Content-Disposition: attachment;filename=export.csv";
     } else if (ad_utility::getLowercase(req->getQuery("action")) ==
                "tsv_export") {
       // TSV export
       response = composeResponseSepValues(pq, qet, '\t');
-      contentType =
-          "text/tab-separated-values\r\n"
-          "Content-Disposition: attachment;filename=export.tsv";
+      contentType = "text/tab-separated-values\r\n"
+                    "Content-Disposition: attachment;filename=export.tsv";
     } else {
       // Normal case: JSON response
       response = composeResponseJson(pq, qet, maxSend);
@@ -178,18 +178,18 @@ void Server::process(uWS::HttpResponse<false>* resp, uWS::HttpRequest* req) {
     // Print the runtime info. This needs to be done after the query
     // was computed.
     LOG(INFO) << '\n' << qet.getRootOperation()->getRuntimeInfo().toString();
-  } catch (const ad_semsearch::Exception& e) {
+  } catch (const ad_semsearch::Exception &e) {
     resp->writeStatus("500 Internal Server Error");
     resp->end(composeResponseJson(query, e));
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     resp->writeStatus("500 Internal Server Error");
     resp->end(composeResponseJson(query, &e));
   }
 }
 
 // _____________________________________________________________________________
-Server::ParamValueMap Server::parseHttpRequest(
-    const string& httpRequest) const {
+Server::ParamValueMap
+Server::parseHttpRequest(const string &httpRequest) const {
   LOG(DEBUG) << "Parsing HTTP Request." << endl;
   ParamValueMap params;
   _requestProcessingTimer.start();
@@ -252,7 +252,7 @@ Server::ParamValueMap Server::parseHttpRequest(
 }
 
 // _____________________________________________________________________________
-string Server::createQueryFromHttpParams(uWS::HttpRequest* req) const {
+string Server::createQueryFromHttpParams(uWS::HttpRequest *req) const {
   // Construct a Query object from the parsed request.
   std::string_view query = req->getQuery("query");
   if (query.empty()) {
@@ -263,8 +263,8 @@ string Server::createQueryFromHttpParams(uWS::HttpRequest* req) const {
 }
 
 // _____________________________________________________________________________
-string Server::createHttpResponse(const string& content,
-                                  const string& contentType) const {
+string Server::createHttpResponse(const string &content,
+                                  const string &contentType) const {
   std::ostringstream os;
   os << "HTTP/1.1 200 OK\r\n"
      << "Content-Length: " << content.size() << "\r\n"
@@ -280,20 +280,20 @@ string Server::createHttpResponse(const string& content,
 }
 
 // _____________________________________________________________________________
-void Server::create404HttpResponse(uWS::HttpResponse<false>* resp) const {
+void Server::create404HttpResponse(uWS::HttpResponse<false> *resp) const {
   resp->writeStatus("404 Not Found");
   resp->end("404 Not Found");
 }
 
 // _____________________________________________________________________________
-void Server::create400HttpResponse(uWS::HttpResponse<false>* resp) const {
+void Server::create400HttpResponse(uWS::HttpResponse<false> *resp) const {
   resp->writeStatus("400 Bad Request");
   resp->end("400 Bad Request");
 }
 
 // _____________________________________________________________________________
-string Server::composeResponseJson(const ParsedQuery& query,
-                                   const QueryExecutionTree& qet,
+string Server::composeResponseJson(const ParsedQuery &query,
+                                   const QueryExecutionTree &qet,
                                    size_t maxSend) const {
   // TODO(schnelle) we really should use a json library
   // such as https://github.com/nlohmann/json
@@ -336,8 +336,8 @@ string Server::composeResponseJson(const ParsedQuery& query,
 }
 
 // _____________________________________________________________________________
-string Server::composeResponseSepValues(const ParsedQuery& query,
-                                        const QueryExecutionTree& qet,
+string Server::composeResponseSepValues(const ParsedQuery &query,
+                                        const QueryExecutionTree &qet,
                                         char sep) const {
   std::ostringstream os;
   size_t limit = std::numeric_limits<size_t>::max();
@@ -354,8 +354,9 @@ string Server::composeResponseSepValues(const ParsedQuery& query,
 }
 
 // _____________________________________________________________________________
-string Server::composeResponseJson(
-    const string& query, const ad_semsearch::Exception& exception) const {
+string
+Server::composeResponseJson(const string &query,
+                            const ad_semsearch::Exception &exception) const {
   std::ostringstream os;
   _requestProcessingTimer.stop();
 
@@ -378,8 +379,8 @@ string Server::composeResponseJson(
 }
 
 // _____________________________________________________________________________
-string Server::composeResponseJson(const string& query,
-                                   const std::exception* exception) const {
+string Server::composeResponseJson(const string &query,
+                                   const std::exception *exception) const {
   std::ostringstream os;
   _requestProcessingTimer.stop();
 
@@ -401,8 +402,8 @@ string Server::composeResponseJson(const string& query,
 }
 
 // _____________________________________________________________________________
-void Server::serveFile(uWS::HttpResponse<false>* resp,
-                       const string& requestedFile) const {
+void Server::serveFile(uWS::HttpResponse<false> *resp,
+                       const string &requestedFile) const {
   string contentString;
   string contentType = "text/plain";
   string statusString = "200 OK";
